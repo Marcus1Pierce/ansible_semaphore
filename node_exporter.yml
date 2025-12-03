@@ -1,5 +1,5 @@
 - name: Auto update Node Exporter dengan pengecekan systemd
-  hosts: node_exporter
+  hosts: monitoring_nodes
   become: yes
   tasks:
     - name: Cek apakah systemd tersedia
@@ -27,6 +27,35 @@
         src: "/tmp/node_exporter.tar.gz"
         dest: "/usr/local/bin/"
         remote_src: yes
+
+    - name: Buat systemd unit file untuk node_exporter
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network.target
+
+          [Service]
+          User=nobody
+          ExecStart=/usr/local/bin/node_exporter --web.listen-address=:9100
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+      when: systemd_check.stat.exists
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+      when: systemd_check.stat.exists
+
+    - name: Enable and start node_exporter service
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+      when: systemd_check.stat.exists
 
     - name: Restart node_exporter service jika systemd ada
       systemd:
