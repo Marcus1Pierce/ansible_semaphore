@@ -1,0 +1,41 @@
+- name: Auto update Node Exporter dengan pengecekan systemd
+  hosts: monitoring_nodes
+  become: yes
+  tasks:
+    - name: Cek apakah systemd tersedia
+      stat:
+        path: /bin/systemctl
+      register: systemd_check
+
+    - name: Ambil versi terbaru dari GitHub
+      uri:
+        url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
+        return_content: yes
+      register: release_info
+
+    - name: Set versi terbaru
+      set_fact:
+        node_exporter_version: "{{ release_info.json.tag_name | regex_replace('v','') }}"
+
+    - name: Download binary node_exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/node_exporter.tar.gz"
+
+    - name: Extract binary
+      unarchive:
+        src: "/tmp/node_exporter.tar.gz"
+        dest: "/usr/local/bin/"
+        remote_src: yes
+
+    - name: Restart node_exporter service jika systemd ada
+      systemd:
+        name: node_exporter
+        state: restarted
+      when: systemd_check.stat.exists
+
+    - name: Jalankan node_exporter manual jika systemd tidak ada
+      command: "/usr/local/bin/node_exporter --web.listen-address=:9100"
+      async: 30
+      poll: 0
+      when: not systemd_check.stat.exists
