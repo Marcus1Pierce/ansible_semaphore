@@ -1,5 +1,5 @@
 - name: Auto update Node Exporter dengan pengecekan systemd
-  hosts: monitoring_nodes
+  hosts: node_exporter
   become: yes
   tasks:
     - name: Cek apakah systemd tersedia
@@ -62,16 +62,3 @@
         name: node_exporter
         state: started
         enabled: yes
-      when: systemd_check.stat.exists
-
-    - name: Restart node_exporter service jika systemd ada
-      systemd:
-        name: node_exporter
-        state: restarted
-      when: systemd_check.stat.exists
-
-    - name: Jalankan node_exporter manual jika systemd tidak ada
-      command: "/usr/local/bin/node_exporter --web.listen-address=:9100"
-      async: 30
-      poll: 0
-      when: not systemd_check.stat.exists
