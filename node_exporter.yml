@@ -22,15 +22,15 @@
         url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
         dest: "/tmp/node_exporter.tar.gz"
 
-    - name: Extract binary
+    - name: Extract binary ke /tmp
       unarchive:
         src: "/tmp/node_exporter.tar.gz"
-        dest: "/usr/local/bin/"
+        dest: "/tmp/"
         remote_src: yes
 
     - name: Pindahkan binary node_exporter ke /usr/local/bin
       copy:
-        src: "/usr/local/bin/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
         dest: "/usr/local/bin/node_exporter"
         mode: '0755'
         remote_src: yes
@@ -62,3 +62,16 @@
         name: node_exporter
         state: started
         enabled: yes
+      when: systemd_check.stat.exists
+
+    - name: Restart node_exporter service jika systemd ada
+      systemd:
+        name: node_exporter
+        state: restarted
+      when: systemd_check.stat.exists
+
+    - name: Jalankan node_exporter manual jika systemd tidak ada
+      command: "/usr/local/bin/node_exporter --web.listen-address=:9100"
+      async: 30
+      poll: 0
+      when: not systemd_check.stat.exists
