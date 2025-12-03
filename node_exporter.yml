@@ -1,5 +1,5 @@
 - name: Auto update Node Exporter dengan pengecekan systemd
-  hosts: monitoring_nodes
+  hosts: node_exporter
   become: yes
   tasks:
     - name: Cek apakah systemd tersedia
