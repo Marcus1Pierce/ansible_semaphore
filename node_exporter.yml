@@ -79,8 +79,8 @@
     - name: Temukan semua file/folder yang diawali node_exporter di /tmp
       find:
         paths: /tmp
-      patterns: "node_exporter*"
-      file_type: any
+        patterns: "node_exporter*"
+        file_type: any
       register: node_exporter_tmp_files
 
     - name: Hapus semua file/folder ditemukan
