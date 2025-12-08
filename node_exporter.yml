@@ -86,6 +86,6 @@
     - name: Hapus semua file/folder ditemukan
       file:
         path: "{{ item.path }}"
-      state: absent
+        state: absent
       loop: "{{ node_exporter_tmp_files.files }}"
       become: yes
