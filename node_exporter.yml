@@ -76,16 +76,16 @@
       poll: 0
       when: not systemd_check.stat.exists
 
-- name: Temukan semua file/folder yang diawali node_exporter di /tmp
-  find:
-    paths: /tmp
-    patterns: "node_exporter*"
-    file_type: any
-  register: node_exporter_tmp_files
+    - name: Temukan semua file/folder yang diawali node_exporter di /tmp
+      find:
+        paths: /tmp
+      patterns: "node_exporter*"
+      file_type: any
+      register: node_exporter_tmp_files
 
-- name: Hapus semua file/folder ditemukan
-  file:
-    path: "{{ item.path }}"
-    state: absent
-  loop: "{{ node_exporter_tmp_files.files }}"
-  become: yes
+    - name: Hapus semua file/folder ditemukan
+      file:
+        path: "{{ item.path }}"
+      state: absent
+      loop: "{{ node_exporter_tmp_files.files }}"
+      become: yes
