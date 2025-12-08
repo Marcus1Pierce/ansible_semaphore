@@ -11,14 +11,11 @@
       uri:
         url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
         return_content: yes
-        headers:
-          User-Agent: AnsiblePlaybook
       register: release_info
-      failed_when: release_info.status != 200
 
     - name: Set versi terbaru
       set_fact:
-        node_exporter_version: "{{ (release_info.content | from_json).tag_name | regex_replace('v','') }}"
+        node_exporter_version: "{{ release_info.json.tag_name | regex_replace('v','') }}"
 
     - name: Download binary node_exporter
       get_url:
@@ -79,7 +76,8 @@
       poll: 0
       when: not systemd_check.stat.exists
 
-    - name: Hapus semua file/folder yang diawali node_exporter di /tmp
-      shell: rm -rf /tmp/node_exporter*
-      args:
-        warn: false
+- name: Hapus semua file/folder yang diawali node_exporter di /tmp
+  shell: "rm -rf /tmp/node_exporter*"
+  args:
+    warn: false
+  become: yes
