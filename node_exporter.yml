@@ -1,10 +1,13 @@
-- name: Auto update Node Exporter dengan pengecekan systemd
+- name: Auto update Node Exporter
   hosts: node_exporter
   become: yes
+  vars:
+    node_exporter_bin_path: "/usr/local/bin/node_exporter"
+
   tasks:
     - name: Cek apakah systemd tersedia
       stat:
-        path: /bin/systemctl
+        path: /run/systemd/system
       register: systemd_check
 
     - name: Ambil versi terbaru dari GitHub
@@ -12,32 +15,32 @@
         url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
         return_content: yes
         headers:
-          User-Agent: Ansible
+          User-Agent: "Ansible"
       register: release_info
+      until: release_info.status == 200
+      retries: 3
+      delay: 5
 
     - name: Set versi terbaru
       set_fact:
-        node_exporter_version: "{{ release_info.json.tag_name | regex_replace('v','') }}"
+        node_exporter_version: "{{ release_info.json.tag_name | regex_replace('^v','') }}"
 
-    - name: Download binary node_exporter
-      get_url:
-        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
-        dest: "/tmp/node_exporter.tar.gz"
-
-    - name: Extract binary ke /tmp
+    - name: Download and Unarchive Node Exporter
       unarchive:
-        src: "/tmp/node_exporter.tar.gz"
-        dest: "/tmp/"
+        src: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: /tmp
         remote_src: yes
+        creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
 
-    - name: Pindahkan binary node_exporter ke /usr/local/bin
+    - name: Pindahkan binary ke bin path
       copy:
         src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
-        dest: "/usr/local/bin/node_exporter"
+        dest: "{{ node_exporter_bin_path }}"
         mode: "0755"
         remote_src: yes
+      notify: Restart node_exporter
 
-    - name: Buat systemd unit file untuk node_exporter
+    - name: Buat systemd unit file
       copy:
         dest: /etc/systemd/system/node_exporter.service
         content: |
@@ -47,47 +50,43 @@
 
           [Service]
           User=nobody
-          ExecStart=/usr/local/bin/node_exporter --web.listen-address=:9100
+          ExecStart={{ node_exporter_bin_path }} --web.listen-address=:9100
           Restart=always
 
           [Install]
           WantedBy=multi-user.target
       when: systemd_check.stat.exists
+      notify:
+        - Reload systemd
+        - Restart node_exporter
 
-    - name: Reload systemd daemon
-      systemd:
-        daemon_reload: yes
-      when: systemd_check.stat.exists
-
-    - name: Enable and start node_exporter service
+    - name: Pastikan service berjalan (Systemd)
       systemd:
         name: node_exporter
         state: started
         enabled: yes
       when: systemd_check.stat.exists
 
-    - name: Restart node_exporter service jika systemd ada
+    - name: Jalankan node_exporter manual (Non-Systemd)
+      shell: "nohup {{ node_exporter_bin_path }} --web.listen-address=:9100 > /dev/null 2>&1 &"
+      async: 10
+      poll: 0
+      when: not systemd_check.stat.exists
+
+    - name: Bersihkan file temporary
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_fileglob:
+        - "/tmp/node_exporter*"
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart node_exporter
       systemd:
         name: node_exporter
         state: restarted
       when: systemd_check.stat.exists
-
-    - name: Jalankan node_exporter manual jika systemd tidak ada
-      command: "/usr/local/bin/node_exporter --web.listen-address=:9100"
-      async: 30
-      poll: 0
-      when: not systemd_check.stat.exists
-
-    - name: Temukan semua file/folder yang diawali node_exporter di /tmp
-      find:
-        paths: /tmp
-        patterns: "node_exporter*"
-        file_type: any
-      register: node_exporter_tmp_files
-
-    - name: Hapus semua file/folder ditemukan
-      file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ node_exporter_tmp_files.files }}"
-      become: yes
