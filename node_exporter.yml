@@ -1,8 +1,10 @@
-- name: Auto update Node Exporter
+- name: Install Node Exporter (Hardcoded Version)
   hosts: node_exporter
   become: yes
   vars:
-    node_exporter_bin_path: "/usr/local/bin/node_exporter"
+    # Tentukan versi di sini secara manual
+    node_exporter_version: "1.8.2"
+    node_exporter_bin: "/usr/local/bin/node_exporter"
 
   tasks:
     - name: Cek apakah systemd tersedia
@@ -10,32 +12,17 @@
         path: /run/systemd/system
       register: systemd_check
 
-    - name: Ambil versi terbaru dari GitHub
-      uri:
-        url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
-        return_content: yes
-        headers:
-          User-Agent: "Ansible"
-      register: release_info
-      until: release_info.status == 200
-      retries: 3
-      delay: 5
-
-    - name: Set versi terbaru
-      set_fact:
-        node_exporter_version: "{{ release_info.json.tag_name | regex_replace('^v','') }}"
-
-    - name: Download and Unarchive Node Exporter
+    - name: Download and Extract Node Exporter
       unarchive:
         src: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
         dest: /tmp
         remote_src: yes
         creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
 
-    - name: Pindahkan binary ke bin path
+    - name: Copy binary ke /usr/local/bin
       copy:
         src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
-        dest: "{{ node_exporter_bin_path }}"
+        dest: "{{ node_exporter_bin }}"
         mode: "0755"
         remote_src: yes
       notify: Restart node_exporter
@@ -50,7 +37,7 @@
 
           [Service]
           User=nobody
-          ExecStart={{ node_exporter_bin_path }} --web.listen-address=:9100
+          ExecStart={{ node_exporter_bin }} --web.listen-address=:9100
           Restart=always
 
           [Install]
@@ -60,25 +47,26 @@
         - Reload systemd
         - Restart node_exporter
 
-    - name: Pastikan service berjalan (Systemd)
+    - name: Pastikan service Node Exporter Running (Systemd)
       systemd:
         name: node_exporter
         state: started
         enabled: yes
       when: systemd_check.stat.exists
 
-    - name: Jalankan node_exporter manual (Non-Systemd)
-      shell: "nohup {{ node_exporter_bin_path }} --web.listen-address=:9100 > /dev/null 2>&1 &"
+    - name: Jalankan Node Exporter manual (Non-Systemd)
+      shell: "nohup {{ node_exporter_bin }} --web.listen-address=:9100 > /dev/null 2>&1 &"
       async: 10
       poll: 0
       when: not systemd_check.stat.exists
 
-    - name: Bersihkan file temporary
+    - name: Bersihkan sisa file di /tmp
       file:
         path: "{{ item }}"
         state: absent
-      with_fileglob:
-        - "/tmp/node_exporter*"
+      with_items:
+        - "/tmp/node_exporter.tar.gz"
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
 
   handlers:
     - name: Reload systemd
