@@ -2,7 +2,6 @@
   hosts: node_exporter
   become: yes
   vars:
-    # Tentukan versi di sini secara manual
     node_exporter_version: "1.10.2"
     node_exporter_bin: "/usr/local/bin/node_exporter"
 
@@ -18,7 +17,8 @@
         url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
         dest: /tmp/node_exporter.tar.gz
         mode: "0644"
-        creates: /tmp/node_exporter.tar.gz
+      # <-- block creates di level task
+      creates: /tmp/node_exporter.tar.gz
 
     # Pastikan file sudah ada sebelum diekstrak
     - name: Verify tarball existence
@@ -42,12 +42,13 @@
         remote_src: yes
         creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
 
-    # Name the extracted directory without a version string
+    # Rename extracted directory
     - name: Rename extracted directory
       command: mv /tmp/node_exporter-{{ node_exporter_version }}.linux-amd64 /tmp/node_exporter
       args:
         creates: /tmp/node_exporter
 
+    # Copy binary ke /usr/local/bin
     - name: Copy binary ke /usr/local/bin
       copy:
         src: "/tmp/node_exporter/node_exporter"
@@ -55,3 +56,11 @@
         mode: "0755"
         remote_src: yes
       notify: Restart node_exporter
+
+  handlers:
+    - name: Restart node_exporter
+      systemd:
+        name: node_exporter
+        state: restarted
+        enabled: yes
+      become: yes
