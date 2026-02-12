@@ -1,0 +1,13 @@
+- name: Install Node Exporter
+  hosts: node_exporter
+  become: yes
+  vars:
+    # Tentukan versi di sini secara manual
+    node_exporter_version: "1.10.2"
+    node_exporter_bin: "/usr/local/bin/node_exporter"
+
+  tasks:
+    - name: Cek apakah systemd tersedia
+      stat:
+        path: /run/systemd/system
+      register: systemd_check
