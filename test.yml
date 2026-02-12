@@ -4,6 +4,7 @@
   vars:
     node_exporter_version: "1.10.2"
     node_exporter_bin: "/usr/local/bin/node_exporter"
+    node_exporter_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
 
   tasks:
     - name: Cek apakah systemd tersedia
@@ -11,54 +12,71 @@
         path: /run/systemd/system
       register: systemd_check
 
-    # Download the tarball (hanya jika belum ada)
-    - name: Download Node Exporter tarball
+    - name: Cek versi node_exporter yang sudah terinstal
+      shell: |
+        set -o pipefail
+        {{ node_exporter_bin }} --version 2>&1 | head -1 | grep -oP 'version \K[0-9.]+' || echo "not_installed"
+      args:
+        executable: /bin/bash
+      register: installed_version
+      changed_when: false
+      failed_when: false
+
+    - name: Download Node Exporter tarball (hanya jika versi berbeda)
       get_url:
-        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
         dest: /tmp/node_exporter.tar.gz
         mode: "0644"
+      when: installed_version.stdout != node_exporter_version
 
-    # Pastikan file sudah ada sebelum diekstrak
-    - name: Verify tarball existence
-      stat:
-        path: /tmp/node_exporter.tar.gz
-      register: tarball_info
-
-    - name: Debug tarball status
-      debug:
-        msg: |
-          Tarball path: {{ tarball_info.stat.path }}
-          Exists: {{ tarball_info.stat.exists }}
-          Size: {{ tarball_info.stat.size }} bytes
-          Perms: {{ tarball_info.stat.mode }}
-
-    # Extract the tarball
     - name: Extract Node Exporter
       unarchive:
         src: /tmp/node_exporter.tar.gz
         dest: /tmp
         remote_src: yes
-        creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+      when: installed_version.stdout != node_exporter_version
 
-    # Rename extracted directory
-    - name: Rename extracted directory
-      command: mv /tmp/node_exporter-{{ node_exporter_version }}.linux-amd64 /tmp/node_exporter
-      args:
-        creates: /tmp/node_exporter
-
-    # Copy binary ke /usr/local/bin
     - name: Copy binary ke /usr/local/bin
       copy:
-        src: "/tmp/node_exporter/node_exporter"
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
         dest: "{{ node_exporter_bin }}"
         mode: "0755"
         remote_src: yes
+      when: installed_version.stdout != node_exporter_version
       notify: Restart node_exporter
 
+    - name: Buat systemd unit file
+      template:
+        dest: /etc/systemd/system/node_exporter.service
+        src: node_exporter.service.j2
+      when: systemd_check.stat.exists
+      notify:
+        - Reload systemd
+        - Restart node_exporter
+
+    - name: Pastikan service Node Exporter Running (Systemd)
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+      when: systemd_check.stat.exists
+
+    - name: Bersihkan sisa file di /tmp
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/tmp/node_exporter.tar.gz"
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+      when: installed_version.stdout != node_exporter_version
+
   handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
     - name: Restart node_exporter
       systemd:
         name: node_exporter
         state: restarted
         enabled: yes
-      become: yes
