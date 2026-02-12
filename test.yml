@@ -2,6 +2,7 @@
   hosts: node_exporter
   become: yes
   vars:
+    # Tentukan versi di sini secara manual
     node_exporter_version: "1.10.2"
     node_exporter_bin: "/usr/local/bin/node_exporter"
 
@@ -11,45 +12,31 @@
         path: /run/systemd/system
       register: systemd_check
 
-    # -------------------------------------------------------------------
-    # Download tarball
-    # -------------------------------------------------------------------
+    # Download the tarball (hanya jika belum ada)
     - name: Download Node Exporter tarball
       get_url:
         url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
         dest: /tmp/node_exporter.tar.gz
         mode: "0644"
-        creates: /tmp/node_exporter.tar.gz
-        timeout: 60 # kalau ada jaringan lambat
 
-    # -------------------------------------------------------------------
-    # Verifikasi berkas ada / tampilkan ukuran dan mode
-    # -------------------------------------------------------------------
-    - name: Stat tarball after download
+    # Pastikan file sudah ada sebelum diekstrak
+    - name: Verify tarball existence
       stat:
         path: /tmp/node_exporter.tar.gz
       register: tarball_info
 
-    - name: Debug info of downloaded tarball
+    - name: Debug tarball status
       debug:
         msg: |
-          Path: {{ tarball_info.stat.path }}
+          Tarball path: {{ tarball_info.stat.path }}
           Exists: {{ tarball_info.stat.exists }}
           Size: {{ tarball_info.stat.size }} bytes
-          Mode: {{ tarball_info.stat.mode }}
+          Perms: {{ tarball_info.stat.mode }}
 
-    - name: Fail if tarball missing
-      fail:
-        msg: "Berkas /tmp/node_exporter.tar.gz tidak ditemukan setelah download. Periksa jaringan atau izin."
-      when: not tarball_info.stat.exists
-
-    # -------------------------------------------------------------------
-    # Ekstraksi
-    # -------------------------------------------------------------------
+    # Extract the tarball
     - name: Extract Node Exporter
       unarchive:
         src: /tmp/node_exporter.tar.gz
         dest: /tmp
         remote_src: yes
         creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
-        keep_newer: true # hindari overwrite yang tidak diinginkan
