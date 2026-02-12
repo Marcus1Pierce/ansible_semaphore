@@ -4,7 +4,14 @@
   vars:
     node_exporter_version: "1.10.2"
     node_exporter_bin: "/usr/local/bin/node_exporter"
-    node_exporter_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    # Deteksi arsitektur secara otomatis
+    node_exporter_arch: >-
+      {% if ansible_architecture == 'x86_64' %}amd64
+      {% elif ansible_architecture == 'aarch64' %}arm64
+      {% elif ansible_architecture == 'armv6l' %}armv6
+      {% elif ansible_architecture == 'armv7l' %}armv7
+      {% elif ansible_architecture in ['i386', 'i686'] %}386
+      {% else %}amd64{% endif %}
 
   tasks:
     - name: Cek apakah systemd tersedia
@@ -46,9 +53,20 @@
       notify: Restart node_exporter
 
     - name: Buat systemd unit file
-      template:
+      copy:
         dest: /etc/systemd/system/node_exporter.service
-        src: node_exporter.service.j2
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network.target
+
+          [Service]
+          User=nobody
+          ExecStart={{ node_exporter_bin }} --web.listen-address=:9100
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
       when: systemd_check.stat.exists
       notify:
         - Reload systemd
@@ -65,7 +83,7 @@
       file:
         path: "{{ item }}"
         state: absent
-      with_items:
+      loop:
         - "/tmp/node_exporter.tar.gz"
         - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
       when: installed_version.stdout != node_exporter_version
