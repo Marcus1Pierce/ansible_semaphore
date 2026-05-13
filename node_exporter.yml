@@ -2,7 +2,7 @@
   hosts: node_exporter
   become: yes
   vars:
-    node_exporter_version: "1.10.2"
+    node_exporter_version: "1.11.1"
     node_exporter_bin: "/usr/local/bin/node_exporter"
     # Deteksi arsitektur secara otomatis
     node_exporter_arch: >-
